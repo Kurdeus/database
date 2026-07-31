@@ -20,12 +20,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🔧 Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl jq openssl
-
-      - name: 📡 Get direct link and fix spaces
+      - name: 📡 Get direct link
         id: get_link
         run: |
           TELEGRAM_LINK="${{ github.event.inputs.telegram_link }}"
@@ -34,15 +29,15 @@ jobs:
             -d "telegram_link=$TELEGRAM_LINK" \
             https://telegramdownloader.net/proxy.php)
 
-          RAW_URL=$(echo "$RESPONSE" | jq -r '.data.data.link')
-          FILE_NAME=$(echo "$RESPONSE" | jq -r '.data.data.file_name')
+          RAW_URL=$(echo "$RESPONSE" | grep -oP '"link"\s*:\s*"\K[^"]+')
+          FILE_NAME=$(echo "$RESPONSE" | grep -oP '"file_name"\s*:\s*"\K[^"]+')
 
-          if [ -z "$RAW_URL" ] || [ "$RAW_URL" = "null" ]; then
+          if [ -z "$RAW_URL" ]; then
             echo "❌ Error: Could not get download link!"
             exit 1
           fi
 
-          CORRECTED_URL=$(echo "$RAW_URL" | sed 's/%20/-/g' | sed 's/ /-/g')
+          CORRECTED_URL=$(echo "$RAW_URL" | sed 's/%20/-/g; s/ /-/g')
           echo "download_url=$CORRECTED_URL" >> $GITHUB_OUTPUT
           echo "original_name=$FILE_NAME" >> $GITHUB_OUTPUT
 
@@ -67,8 +62,6 @@ jobs:
 
           curl -L --progress-bar --max-time 7200 --retry 10 -o "books/$FINAL_NAME" "$URL"
 
-          SIZE=$(stat -c%s "books/$FINAL_NAME")
-          echo "file_size=$SIZE" >> $GITHUB_OUTPUT
           echo "downloaded_name=$FINAL_NAME" >> $GITHUB_OUTPUT
 
       - name: 🔄 Fix filename (clean/ascii-safe)
@@ -78,10 +71,10 @@ jobs:
           [ -e "$FILENAME" ] || exit 0
           EXT="${FILENAME##*.}"
           if [[ "$FILENAME" =~ [^[:ascii:]] ]]; then
-            NEW_NAME="$(openssl rand -hex 8).${EXT}"
+            NEW_NAME="$(date +%s%N)${RANDOM}.${EXT}"
             mv "$FILENAME" "$NEW_NAME"
           else
-            CLEAN_NAME=$(echo "$FILENAME" | sed 's/[^a-zA-Z0-9._-]/_/g' | sed 's/__*/_/g')
+            CLEAN_NAME=$(echo "$FILENAME" | sed 's/[^a-zA-Z0-9._-]/_/g; s/__*/_/g')
             [ "$CLEAN_NAME" != "$FILENAME" ] && mv "$FILENAME" "$CLEAN_NAME"
           fi
           cd ..
